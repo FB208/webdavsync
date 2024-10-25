@@ -1,0 +1,4 @@
+webdavclient3==3.14.6
+watchdog==3.0.0
+configparser==5.3.0
+schedule==1.2.2

@@ -1,0 +1,13 @@
+{
+    "WebDAV": {
+        "url": "https://webdav-1814303529.pd1.123pan.cn/webdav",
+        "username": "",
+        "password": ""
+    },
+    "Sync": [{
+        "local_directory": "D:/CodeSpace/SelfSpace/webdavsync/testfile",
+        "remote_directory": "/webdavsync/testfile",
+        "local_save_day": 7,
+        "remote_save_day": 30
+    }]
+}
