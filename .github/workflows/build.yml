@@ -26,13 +26,16 @@ jobs:
         python3.9 -m pip install pyinstaller
         
     - name: Build with PyInstaller
-      run: python3.9 -m PyInstaller --onefile main.py
+      run: python3.9 -m PyInstaller --onefile main.py -n webdavsync
+      
+    - name: Rename output file
+      run: mv dist/webdavsync dist/webdavsync-${{ github.ref_name }}-debian
       
     - name: Upload Debian artifact
       uses: actions/upload-artifact@v4
       with:
         name: debian-build
-        path: dist/*
+        path: dist/webdavsync-*
 
   build-windows:
     runs-on: windows-latest
@@ -52,13 +55,16 @@ jobs:
         pip install pyinstaller
         
     - name: Build with PyInstaller
-      run: pyinstaller --onefile main.py
+      run: pyinstaller --onefile main.py -n webdavsync
+      
+    - name: Rename output file
+      run: ren dist\webdavsync.exe webdavsync-${{ github.ref_name }}-windows.exe
       
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
         name: windows-build
-        path: dist\*
+        path: dist\webdavsync-*
 
   create-release:
     needs: [build-debian, build-windows]
@@ -76,7 +82,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ github.ref_name }} \
-            ./debian-build/main \
-            ./windows-build/main.exe \
+            ./debian-build/webdavsync-${{ github.ref_name }}-debian \
+            ./windows-build/webdavsync-${{ github.ref_name }}-windows.exe \
             --title "Release ${{ github.ref_name }}" \
             --generate-notes
