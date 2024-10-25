@@ -1,12 +1,15 @@
-name: Build
+name: Build and Release
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以 v 开头的 tag 时触发
 
 jobs:
   build-debian:
     runs-on: ubuntu-latest
     container:
-      image: debian:bullseye  # 使用 Debian 11 (Bullseye) 镜像
+      image: debian:bullseye
 
     steps:
     - uses: actions/checkout@v3
@@ -56,3 +59,41 @@ jobs:
       with:
         name: windows-build
         path: dist\*
+
+  create-release:
+    needs: [build-debian, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+          
+      - name: Upload Debian Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./debian-build/main
+          asset_name: main-debian
+          asset_content_type: application/octet-stream
+          
+      - name: Upload Windows Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./windows-build/main.exe
+          asset_name: main-windows.exe
+          asset_content_type: application/octet-stream
