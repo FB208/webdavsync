@@ -73,10 +73,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取所有历史记录，以便我们可以获取最近的提交信息
       
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        
+      
+      - name: Get commit message
+        id: get_commit_message
+        run: |
+          echo "message=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
+      
       - name: Create Release and Upload Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -85,4 +92,4 @@ jobs:
             ./debian-build/webdavsync-${{ github.ref_name }}-debian \
             ./windows-build/webdavsync-${{ github.ref_name }}-windows.exe \
             --title "Release ${{ github.ref_name }}" \
-            --generate-notes
+            --notes "${{ steps.get_commit_message.outputs.message }}"

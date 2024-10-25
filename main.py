@@ -110,7 +110,7 @@ def main():
     hourly_task(client, db_manager)
     
     # 设置定时任务
-    schedule.every().second.do(run_scheduled_task, client=client, db_manager=db_manager)
+    schedule.every().hour.do(run_scheduled_task, client=client, db_manager=db_manager)
     
     logging.info("定时任务已设置，每小时执行一次")
     
