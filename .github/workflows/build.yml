@@ -69,6 +69,7 @@ jobs:
   create-release:
     needs: [build-debian, build-windows]
     runs-on: ubuntu-latest
+    if: "!contains(github.ref_name, 'alpha')"  # 仅当标签不包含 'alpha' 时才运行
     permissions:
       contents: write
     steps:
