@@ -18,7 +18,7 @@ def check_file_access(file_path):
         # 获取初始文件大小
         initial_size = os.path.getsize(file_path)
         # 等待一小段时间
-        time.sleep(1000)
+        time.sleep(1)
         # 再次获取文件大小
         final_size = os.path.getsize(file_path)
         
