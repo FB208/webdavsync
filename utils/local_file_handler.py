@@ -9,17 +9,42 @@ class FileLockedError(Exception):
 
 def check_file_access(file_path):
     """
-    检查文件是否可访问（未被占用）
-
+    检查文件是否可访问且写入完成
+    
     :param file_path: 文件路径
     :raises FileLockedError: 如果文件被占用则抛出此异常
     """
     try:
-        # 尝试以读写模式打开文件
-        with open(file_path, 'r+'):
-            pass
-    except IOError:
-        raise FileLockedError(f"文件 {file_path} 被占用或无法访问")
+        # 获取初始文件大小
+        initial_size = os.path.getsize(file_path)
+        # 等待一小段时间
+        time.sleep(1000)
+        # 再次获取文件大小
+        final_size = os.path.getsize(file_path)
+        
+        # 如果文件大小发生变化，说明文件正在被写入
+        if initial_size != final_size:
+            raise FileLockedError(f"文件 {file_path} 正在被写入")
+            
+        # 尝试以独占模式打开文件
+        with open(file_path, 'rb') as f:
+            # 尝试获取文件锁
+            try:
+                # Windows 系统
+                if os.name == 'nt':
+                    import msvcrt
+                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                # Linux/Unix 系统
+                else:
+                    import fcntl
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (IOError, OSError):
+                raise FileLockedError(f"文件 {file_path} 被占用")
+                
+    except (IOError, OSError) as e:
+        raise FileLockedError(f"文件 {file_path} 被占用或无法访问: {str(e)}")
 
 def get_available_files(folder_path):
     """

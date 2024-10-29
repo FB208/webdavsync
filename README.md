@@ -37,3 +37,7 @@ pidof webdavsync-v1.0.0-debian
 # 关闭后台运行
 kill $(cat webdavsync.pid) && rm webdavsync.pid
 ```
+
+
+# 我的备注
+版本号带alpha的为测试版，不发布release
