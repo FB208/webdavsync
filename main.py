@@ -24,8 +24,12 @@ def setup_logging():
 
     # 创建 RotatingFileHandler
     log_file = os.path.join(log_dir, "webdav_sync.log")
-    file_handler = RotatingFileHandler(log_file, maxBytes=1024*1024, backupCount=5)
+    file_handler = RotatingFileHandler(log_file, maxBytes=20*1024*1024, backupCount=5, delay=True)
     file_handler.setFormatter(formatter)
+
+    # 设置文件处理器为非阻塞模式
+    file_handler.setLevel(logging.INFO)
+    file_handler.setStream(open(log_file, 'a'))
 
     # 创建 StreamHandler 用于控制台输出
     console_handler = logging.StreamHandler()
