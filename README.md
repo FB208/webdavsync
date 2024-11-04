@@ -20,6 +20,15 @@ python main.py
 > 虽然配置文件中是一个数据，但是现在只支持配置一个
 >
 
+## 配置文件
+config.json 配置文件说明    
+local_zip: 是否压缩本地文件，默认不压缩
+local_origin_directory: 选择压缩时，这个是需要备份的文件夹；不压缩则不用填
+local_sync_directory: 选择压缩时，这个是压缩后文件的保存路径；不压缩则填需要备份的文件夹
+remote_directory: 远程文件夹路径，同步文件时，同步的文件夹
+local_save_day: 本地文件保存天数，超过天数后，本地文件会被删除
+remote_save_day: 远程文件保存天数，超过天数后，远程文件会被删除
+
 ## 在linux上运行
 > 注意修改版本号
 ``` bash

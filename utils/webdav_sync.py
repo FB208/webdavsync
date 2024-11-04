@@ -20,12 +20,6 @@ class WebDAVSyncClient:
         }
         self.webdav_client = Client(self.webdav_options)
         
-        # 修改这里以处理 Sync 是一个列表的情况
-        self.local_directory = self.config['Sync'][0]['local_directory']
-        self.remote_directory = self.config['Sync'][0]['remote_directory']
-        
-        logging.info(f"WebDAV客户端初始化完成，本地目录：{self.local_directory}，远程目录：{self.remote_directory}")
-
         logging.info("正在测试WebDAV连接...")
         try:
             self.webdav_client.list()
@@ -33,39 +27,26 @@ class WebDAVSyncClient:
         except Exception as e:
             logging.error(f"WebDAV连接测试失败: {str(e)}")
 
-    def start_sync(self):
-        self.observer.schedule(self.event_handler, self.local_directory, recursive=True)
-        self.observer.start()
-        logging.info(f"开始监控目录: {self.local_directory}")
+    def sync_file(self, local_path, remote_directory):
+        """
+        同步单个文件到远程目录
         
+        :param local_path: 本地文件路径
+        :param remote_directory: 远程目录路径
+        :return: 远程文件路径或None（如果同步失败）
+        """
         try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.observer.stop()
-        self.observer.join()
-
-    def sync_all_files(self):
-        logging.info(f"开始同步所有文件从 {self.local_directory} 到 {self.remote_directory}")
-        for root, dirs, files in os.walk(self.local_directory):
-            for file in files:
-                local_path = os.path.join(root, file)
-                self.sync_file(local_path)
-        logging.info("所有文件同步完成")
-
-    def sync_file(self, local_path):
-        try:
-            relative_path = os.path.relpath(local_path, self.local_directory)
-            remote_path = os.path.join(self.remote_directory, relative_path).replace('\\', '/')
+            relative_path = os.path.basename(local_path)
+            remote_path = os.path.join(remote_directory, relative_path).replace('\\', '/')
             
             logging.info(f"正在同步文件: {local_path} -> {remote_path}")
             self.webdav_client.upload_sync(local_path=local_path, remote_path=remote_path)
             logging.info(f"已同步文件: {local_path} -> {remote_path}")
             
-            return remote_path  # 返回远程文件路径
+            return remote_path
         except Exception as e:
             logging.error(f"同步文件时出错: {str(e)}")
-            return None  # 如果同步失败，返回 None
+            return None
 
     def delete_remote_file(self, remote_path):
         """
@@ -96,12 +77,9 @@ class WebDAVSyncClient:
         try:
             info = self.webdav_client.info(remote_path)
             if info:
-                # 解析更新时间
                 modified_time_str = info.get('modified', '')
                 if modified_time_str:
-                    # 将字符串转换为 datetime 对象
                     modified_time = datetime.strptime(modified_time_str, "%a, %d %b %Y %H:%M:%S %Z")
-                    # 确保时间是 UTC 时间
                     modified_time = modified_time.replace(tzinfo=pytz.UTC)
                 else:
                     modified_time = None
@@ -118,31 +96,35 @@ class WebDAVSyncClient:
             logging.error(f"获取远程文件信息失败: {remote_path}, 错误: {str(e)}")
             return None
 
-    def list_remote_directory(self):
+    def list_remote_directory(self, remote_directory):
         """
         列出远程目录中的所有文件
 
+        :param remote_directory: 要列出内容的远程目录路径
         :return: 文件名列表
         """
         try:
-            files = self.webdav_client.list(self.remote_directory)
+            files = self.webdav_client.list(remote_directory)
             return files
         except Exception as e:
             logging.error(f"列出远程目录内容时出错: {str(e)}")
             return []
 
 class SyncEventHandler(FileSystemEventHandler):
-    def __init__(self, sync_client):
+    def __init__(self, sync_client, sync_config):
         self.sync_client = sync_client
+        self.sync_config = sync_config
 
     def on_created(self, event):
         if not event.is_directory:
-            self.sync_client.sync_file(event.src_path)
+            self.sync_client.sync_file(event.src_path, self.sync_config['remote_directory'])
 
     def on_modified(self, event):
         if not event.is_directory:
-            self.sync_client.sync_file(event.src_path)
+            self.sync_client.sync_file(event.src_path, self.sync_config['remote_directory'])
 
     def on_deleted(self, event):
         if not event.is_directory:
-            self.sync_client.delete_remote_file(event.src_path)
+            relative_path = os.path.basename(event.src_path)
+            remote_path = os.path.join(self.sync_config['remote_directory'], relative_path).replace('\\', '/')
+            self.sync_client.delete_remote_file(remote_path)

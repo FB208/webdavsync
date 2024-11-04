@@ -5,7 +5,7 @@
         "password": ""
     },
     "Sync": [{
-        "local_directory": "D:/CodeSpace/SelfSpace/webdavsync/testfile",
+        "local_sync_directory": "D:/CodeSpace/SelfSpace/webdavsync/testfile",
         "remote_directory": "/webdavsync/testfile",
         "local_save_day": 7,
         "remote_save_day": 30
