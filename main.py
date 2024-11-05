@@ -1,16 +1,13 @@
-import logging
-import schedule
-import time
-import os
+import logging, os, time
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from utils.webdav_sync import WebDAVSyncClient
 from utils.db_handler import DatabaseManager
 from utils.local_file_handler import get_available_files
 from utils.zip_handler import ZipHandler
-
-# 全局变量，用于跟踪任务执行状态
-task_is_running = False
+from logging.handlers import RotatingFileHandler
+import hashlib
 
 def setup_logging():
     # 确保日志目录存在
@@ -54,7 +51,7 @@ def handle_local_zip(client, sync_config):
     try:
         timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         folder_name = os.path.basename(origin_dir.rstrip('/\\'))
-        zip_filename = f"{folder_name}_{timestamp}.zip"
+        zip_filename = f"{folder_name}_{timestamp}.wdsync.zip"
         
         zip_handler = ZipHandler(origin_dir, sync_dir, zip_filename)
         zip_path = zip_handler.create_zip()
@@ -104,70 +101,142 @@ def clean_remote_expired_files(client, db_manager, sync_config):
                 except Exception as e:
                     logging.error(f"删除过期远程文件失败: {remote_path}, 错误: {str(e)}")
 
-def hourly_task(client, db_manager):
-    """主任务执行函数"""
-    global task_is_running
-    
-    if task_is_running:
-        logging.info("上一次任务还未完成，跳过本次执行")
-        return
-    
-    task_is_running = True
-    
-    try:
-        logging.info(f"【开始执行任务: {time.strftime('%Y-%m-%d %H:%M:%S')}】")
-        
-        # 遍历所有同步配置
-        for sync_config in client.config['Sync']:
-            logging.info(f"处理同步配置: {sync_config['local_origin_directory']} -> {sync_config['remote_directory']}")
+def create_task_function(client, db_config, sync_config):
+    """为每个配置创建独立的任务函数"""
+    def task():
+        try:
+            logging.info(f"开始执行任务: {sync_config['local_origin_directory']}")
             
-            try:
-                # 执行任务：压缩本地文件
-                file_list = handle_local_zip(client, sync_config)
-                
-                # 执行任务：同步文件
-                sync_files(client, db_manager, file_list, sync_config)
-                
-                # 执行任务：删除远端过期文件
-                clean_remote_expired_files(client, db_manager, sync_config)
-                
-                logging.info(f"完成同步配置: {sync_config['local_origin_directory']}")
-            except Exception as e:
-                logging.error(f"处理同步配置时出错: {sync_config['local_origin_directory']}, 错误: {str(e)}")
-                continue  # 继续处理下一个配置
+            # 在任务线程中创建新的数据库连接
+            db_manager = DatabaseManager(db_config)
+            
+            # 执行任务：压缩本地文件
+            file_list = handle_local_zip(client, sync_config)
+            
+            # 执行任务：同步文件
+            sync_files(client, db_manager, file_list, sync_config)
+            
+            # 执行任务：删除本地过期文件
+            clean_local_expired_files(sync_config)
+            
+            # 执行任务：删除远端过期文件
+            clean_remote_expired_files(client, db_manager, sync_config)
+            
+            logging.info(f"完成同步配置: {sync_config['local_origin_directory']}")
+        except Exception as e:
+            logging.error(f"处理同步配置时出错: {sync_config['local_origin_directory']}, 错误: {str(e)}")
+    
+    return task
 
-        logging.info(f"【任务执行结束: {time.strftime('%Y-%m-%d %H:%M:%S')}】")
+def clean_local_expired_files(sync_config):
+    """清理本地过期文件"""
+    # 只在local_zip为true时执行清理
+    if not sync_config.get('local_zip', False):
+        return
+
+    try:
+        local_dir = sync_config['local_sync_directory']
+        local_save_days = sync_config['local_save_day']
+        current_time = datetime.now()
+
+        # 确保目录存在
+        if not os.path.exists(local_dir):
+            logging.warning(f"本地同步目录不存在: {local_dir}")
+            return
+
+        # 获取本地目录中的所有wdsync压缩文件
+        for root, _, files in os.walk(local_dir):
+            for file in files:
+                if not file.endswith('.wdsync.zip'):
+                    continue
+
+                file_path = os.path.join(root, file)
+                
+                try:
+                    # 解析文件名中的时间戳
+                    # 文件名格式：folder_name_YYYY-MM-DD-HH-mm-SS.wdsync.zip
+                    timestamp_str = file.split('_')[-1].replace('.wdsync.zip', '')
+                    try:
+                        file_time = datetime.strptime(timestamp_str, '%Y-%m-%d-%H-%M-%S')
+                    except ValueError:
+                        # 如果无法解析时间戳，说明文件名格式不对，跳过
+                        logging.debug(f"跳过文件名格式不符的文件: {file_path}")
+                        continue
+
+                    # 计算文件是否过期
+                    days_old = (current_time - file_time).days
+                    if days_old > local_save_days:
+                        # 检查文件是否被锁定
+                        if not is_file_accessible(file_path):
+                            logging.warning(f"文件被占用，跳过删除: {file_path}")
+                            continue
+
+                        os.remove(file_path)
+                        logging.info(f"已删除过期本地压缩文件: {file_path}")
+
+                except Exception as e:
+                    logging.error(f"处理文件时出错: {file_path}, 错误: {str(e)}")
+                    continue
+
     except Exception as e:
-        logging.error(f"任务执行出错: {str(e)}")
-    finally:
-        task_is_running = False
+        logging.error(f"清理本地过期文件时出错: {str(e)}")
 
-def run_scheduled_task(client, db_manager):
-    hourly_task(client, db_manager)
+def is_file_accessible(file_path):
+    """检查文件是否可访问（未被锁定）"""
+    try:
+        with open(file_path, 'ab') as _:
+            pass
+        return True
+    except IOError:
+        return False
+
+def create_safe_task_id(path):
+    """创建基于路径哈希的安全任务ID"""
+    # 使用 MD5（生成32位哈希）
+    path_hash = hashlib.md5(path.encode('utf-8')).hexdigest()
+    # 或者使用 SHA256（生成64位哈希）
+    # path_hash = hashlib.sha256(path.encode('utf-8')).hexdigest()
+    
+    # 可以只取前8位作为简短标识
+    short_hash = path_hash[:8]
+    return f"sync_task_{short_hash}"
 
 def main():
     setup_logging()
     logging.info("程序开始执行")
     client = WebDAVSyncClient('config.json')
-    # 指定数据库文件路径，如果不存在会自动创建
-    db_manager = DatabaseManager('data/synced_files.db')
     logging.info("WebDAV客户端初始化完成")
     
-    # 立即执行一次任务
-    hourly_task(client, db_manager)
+    # 创建调度器
+    scheduler = BackgroundScheduler()
+    scheduler.start()
     
-    # 设置定时任务
-    schedule.every().second.do(run_scheduled_task, client=client, db_manager=db_manager)
-    
-    logging.info("定时任务已设置，每小时执行一次")
+    # 为每个同步配置创建独立的定时任务
+    for sync_config in client.config['Sync']:
+        task_func = create_task_function(client, 'data/synced_files.db', sync_config)
+        
+        # 从配置中获取cron表达式
+        cron_expression = sync_config['schedule']
+        
+        # 添加任务到调度器
+        task_id = create_safe_task_id(sync_config['local_origin_directory'])
+        logging.info(f"任务ID映射: {task_id} -> {sync_config['local_origin_directory']}")
+        scheduler.add_job(
+            task_func,
+            CronTrigger.from_crontab(cron_expression),
+            id=task_id,
+            replace_existing=True
+        )
+        
+        logging.info(f"已设置定时任务: {sync_config['local_origin_directory']}, 调度: {cron_expression}")
     
     try:
+        # 保持主线程运行
         while True:
-            schedule.run_pending()
             time.sleep(1)
-
     except KeyboardInterrupt:
         logging.info("程序被用户中断")
+        scheduler.shutdown()
     finally:
         logging.info("程序结束")
 
