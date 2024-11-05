@@ -8,6 +8,7 @@ from utils.local_file_handler import get_available_files
 from utils.zip_handler import ZipHandler
 from logging.handlers import RotatingFileHandler
 import hashlib
+import zipfile
 
 def setup_logging():
     # 确保日志目录存在
@@ -52,12 +53,27 @@ def handle_local_zip(client, sync_config):
         timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         folder_name = os.path.basename(origin_dir.rstrip('/\\'))
         zip_filename = f"{folder_name}_{timestamp}.wdsync.zip"
+        zip_filepath = os.path.join(sync_dir, zip_filename)
         
-        zip_handler = ZipHandler(origin_dir, sync_dir, zip_filename)
-        zip_path = zip_handler.create_zip()
-        return get_available_files(os.path.dirname(zip_path))
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(origin_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        # 获取相对路径
+                        arc_path = os.path.relpath(file_path, origin_dir)
+                        # 尝试添加文件到压缩包
+                        zipf.write(file_path, arc_path)
+                    except (OSError, IOError) as e:
+                        # 记录错误但继续处理其他文件
+                        logging.warning(f"无法压缩文件 {file_path}: {str(e)}")
+                        continue
+        
+        logging.info(f"成功创建压缩文件: {zip_filepath}")
+        return [zip_filepath]
+        
     except Exception as e:
-        logging.error(f"创建压缩文件失败，终止本次任务: {str(e)}")
+        logging.error(f"创建压缩文件失败: {str(e)}")
         raise
 
 def sync_files(client, db_manager, file_list, sync_config):
@@ -153,7 +169,7 @@ def clean_local_expired_files(sync_config):
                 file_path = os.path.join(root, file)
                 
                 try:
-                    # 解析文件名中的时间戳
+                    # 解析文件名���的时间戳
                     # 文件名格式：folder_name_YYYY-MM-DD-HH-mm-SS.wdsync.zip
                     timestamp_str = file.split('_')[-1].replace('.wdsync.zip', '')
                     try:
