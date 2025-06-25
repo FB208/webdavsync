@@ -20,3 +20,4 @@ watchdog==3.0.0
 webdavclient3==3.14.6
 zipp==3.20.2
 apscheduler==3.10.4
+pymysql==1.1.1

@@ -47,6 +47,8 @@ pidof webdavsync-v1.0.0-debian
 kill $(cat webdavsync.pid) && rm webdavsync.pid
 ```
 
+# 在windows上运行
+需要以管理员身份运行
 
 # 我的备注
 版本号带alpha的为测试版，不发布release
