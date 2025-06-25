@@ -1,18 +1,22 @@
-# webdavsync
+# 简介
 通过webdav协议定期备份文件
 
-# 创建虚拟环境
+# 开发
+## 创建虚拟环境
 conda create -n webdavsync python=3.9.2
 
-# 激活虚拟环境
+## 激活虚拟环境
 conda activate webdavsync
 
-# 安装依赖
+## 安装依赖
 pip install -r requirements.txt
 
-# 运行程序
+## 运行程序
 python main.py
 
+## 打包
+- 提交到github之后，create tag，输入一个版本号v0.0.1，会自动打包tags
+- 版本号带alpha的为测试版，不发布release，不带的话还会发布一个releases
 
 # 使用说明
 > 注意，本项目不包含文件内容比对，仅以文件名作为唯一同步标识，不支持修改文件，所以一定要给每个要同步的文件增加唯一时间戳，重名文件不会同步。
@@ -50,5 +54,3 @@ kill $(cat webdavsync.pid) && rm webdavsync.pid
 # 在windows上运行
 需要以管理员身份运行
 
-# 我的备注
-版本号带alpha的为测试版，不发布release
